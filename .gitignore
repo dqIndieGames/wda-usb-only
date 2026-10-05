@@ -1,0 +1,9 @@
+upstream.zip
+source/
+derived/
+package/
+artifacts/
+build-info.json
+patch.diff
+xcode-version.txt
+xcodebuild.log
