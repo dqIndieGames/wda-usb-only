@@ -1,0 +1,61 @@
+name: Build USB-only WDA
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Prepare pinned source and show the complete patch
+        run: |
+          python3 prepare.py
+          cat patch.diff
+      - name: Build unsigned real-device runner
+        run: |
+          set -euo pipefail
+          export DEVELOPER_DIR=/Applications/Xcode_16.4.app/Contents/Developer
+          xcodebuild -version | tee xcode-version.txt
+          cd source
+          xcodebuild build-for-testing -project WebDriverAgent.xcodeproj -scheme WebDriverAgentRunner -destination 'generic/platform=iOS' -derivedDataPath ../derived CODE_SIGNING_ALLOWED=NO ARCHS=arm64 > ../xcodebuild.log 2>&1 || { tail -n 100 ../xcodebuild.log; exit 1; }
+      - name: Package IPA without embedded Apple testing frameworks
+        run: |
+          set -euo pipefail
+          mkdir -p package/Payload artifacts
+          ditto derived/Build/Products/Debug-iphoneos/WebDriverAgentRunner-Runner.app package/Payload/WebDriverAgentRunner-Runner.app
+          python3 - <<'PY'
+          from pathlib import Path
+          import shutil
+          root = Path('package').resolve()
+          frameworks = root / 'Payload/WebDriverAgentRunner-Runner.app/Frameworks'
+          for item in frameworks.iterdir():
+              if item.name.startswith('XC') or item.name in {'Testing.framework', 'libXCTestSwiftSupport.dylib'}:
+                  assert item.resolve().is_relative_to(root)
+                  shutil.rmtree(item) if item.is_dir() else item.unlink()
+          assert (root / 'Payload/WebDriverAgentRunner-Runner.app/PlugIns/WebDriverAgentRunner.xctest').is_dir()
+          PY
+          cd package
+          zip -qry ../artifacts/WebDriverAgentRunner-usb-only-unsigned.ipa Payload
+          cd ..
+          cp build-info.json xcode-version.txt patch.diff artifacts/
+          cp source/LICENSE artifacts/UPSTREAM-LICENSE
+          cd artifacts
+          shasum -a 256 WebDriverAgentRunner-usb-only-unsigned.ipa > SHA256SUMS
+      - name: Upload unsigned IPA and provenance
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: wda-usb-only-unsigned
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: build-failure-log
+          path: xcodebuild.log
+          retention-days: 3
