@@ -3,6 +3,7 @@ from hashlib import sha256
 from pathlib import Path
 import json
 import difflib
+import os
 import urllib.request
 import zipfile
 
@@ -17,6 +18,11 @@ source = root / "source"
 assert not source.exists(), "Use a fresh build directory"
 with zipfile.ZipFile(archive) as package:
     package.extractall(root)
+    if os.name != "nt":
+        for item in package.infolist():
+            mode = (item.external_attr >> 16) & 0o777
+            if mode and not item.is_dir():
+                (root / item.filename).chmod(mode)
 (root / f"WebDriverAgent-{COMMIT}").rename(source)
 target = source / "WebDriverAgentLib/Routing/FBWebServer.m"
 text = target.read_text(encoding="utf-8")
