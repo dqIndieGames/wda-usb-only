@@ -31,6 +31,9 @@ jobs:
           from pathlib import Path
           import shutil
           root = Path('package').resolve()
+          for item in list(root.rglob('*.dSYM')):
+              assert item.resolve().is_relative_to(root)
+              shutil.rmtree(item)
           frameworks = root / 'Payload/WebDriverAgentRunner-Runner.app/Frameworks'
           for item in frameworks.iterdir():
               if item.name.startswith('XC') or item.name in {'Testing.framework', 'libXCTestSwiftSupport.dylib'}:
